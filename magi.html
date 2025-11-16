@@ -1,0 +1,537 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>AI Virtual Try-On System</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <style>
+        body {
+            font-family: 'Inter', sans-serif;
+            background-color: #f3f4f6;
+        }
+        .upload-box {
+            border: 2px dashed #d1d5db;
+            transition: background-color 0.2s ease;
+        }
+        .upload-box:hover {
+            background-color: #e5e7eb;
+        }
+        .spinner {
+            border: 4px solid rgba(0, 0, 0, 0.1);
+            width: 36px;
+            height: 36px;
+            border-radius: 50%;
+            border-left-color: #09f;
+            animation: spin 1s ease infinite;
+        }
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+        .garment-item img.selected {
+            outline: 4px solid #3b82f6;
+            outline-offset: 2px;
+        }
+        .modal {
+            display: none;
+            position: fixed;
+            z-index: 50;
+            left: 0;
+            top: 0;
+            width: 100%;
+            height: 100%;
+            overflow: auto;
+            background-color: rgba(0,0,0,0.5);
+        }
+        .modal-content {
+            background-color: #fefefe;
+            margin: 15% auto;
+            padding: 20px;
+            border: 1px solid #888;
+            width: 80%;
+            max-width: 500px;
+        }
+    </style>
+</head>
+<body class="text-gray-800">
+
+    <header class="bg-white shadow-md">
+        <div class="container mx-auto px-6 py-4">
+            <h1 class="text-3xl font-bold text-center text-gray-900">AI-Based Virtual Try-On System</h1>
+            <p class="text-center text-gray-600 mt-2">Visualize how garments appear on you without physically wearing them.</p>
+        </div>
+    </header>
+
+    <main class="container mx-auto px-6 py-8">
+        <div class="grid grid-cols-1 md:grid-cols-3 gap-8">
+
+            <!-- User Image Section -->
+            <div id="user-image-section" class="bg-white p-6 rounded-lg shadow-lg flex flex-col items-center justify-center text-center">
+                <h2 class="text-2xl font-semibold mb-4">1. Your Image</h2>
+                <div id="user-image-container" class="w-full h-64 flex items-center justify-center upload-box rounded-lg mb-4 cursor-pointer">
+                    <img id="user-preview" src="" alt="Your image" class="hidden max-h-full max-w-full rounded-lg">
+                    <div id="user-placeholder" class="text-gray-500">
+                        <svg class="w-16 h-16 mx-auto mb-2" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z"></path></svg>
+                        <p>Click to upload your photo</p>
+                    </div>
+                </div>
+                <input type="file" id="user-image-upload" class="hidden" accept="image/*">
+                <button id="upload-user-btn" class="w-full bg-blue-600 text-white py-2 px-4 rounded-lg hover:bg-blue-700 transition duration-300">
+                    Upload Image
+                </button>
+            </div>
+
+            <!-- Garment Selection Section -->
+            <div class="bg-white p-6 rounded-lg shadow-lg">
+                <h2 class="text-2xl font-semibold mb-4 text-center">2. Select a Garment</h2>
+                <div id="garment-categories" class="space-y-6 h-96 overflow-y-auto pr-2">
+                    <!-- Categories and garments will be injected by JavaScript -->
+                </div>
+            </div>
+
+            <!-- Result Section -->
+            <div class="bg-white p-6 rounded-lg shadow-lg flex flex-col items-center justify-center text-center">
+                <h2 class="text-2xl font-semibold mb-4">3. Virtual Try-On Result</h2>
+                <div id="result-container" class="w-full h-auto flex items-center justify-center bg-gray-100 rounded-lg mb-4 relative" style="min-height: 256px;">
+                    <canvas id="result-canvas" class="hidden max-h-full max-w-full rounded-lg"></canvas>
+                    <div id="result-placeholder" class="text-gray-500">
+                         <p>Your result will appear here</p>
+                         <p class="text-xs mt-2">(Drag garment to move, scroll to resize)</p>
+                    </div>
+                     <div id="loading-spinner" class="spinner hidden"></div>
+                </div>
+                <div class="w-full grid grid-cols-1 gap-2">
+                    <button id="try-on-btn" class="w-full bg-green-600 text-white py-2 px-4 rounded-lg hover:bg-green-700 transition duration-300 disabled:bg-gray-400 disabled:cursor-not-allowed" disabled>
+                        Generate Try-On (Canvas)
+                    </button>
+                    <button id="gemini-try-on-btn" class="w-full bg-purple-600 text-white py-2 px-4 rounded-lg hover:bg-purple-700 transition duration-300 disabled:bg-gray-400 disabled:cursor-not-allowed" disabled>
+                        Generate with Plus+
+                    </button>
+                </div>
+                <button id="download-btn" class="hidden w-full bg-indigo-600 text-white py-2 px-4 rounded-lg hover:bg-indigo-700 transition duration-300 mt-4">
+                    Download Result
+                </button>
+            </div>
+
+        </div>
+    </main>
+
+    <!-- Modal for messages -->
+    <div id="messageModal" class="modal">
+        <div class="modal-content rounded-lg shadow-xl">
+            <div class="flex justify-between items-center pb-3">
+                <p class="text-2xl font-bold" id="modalTitle">Notification</p>
+                <span class="close-button cursor-pointer text-2xl font-bold">&times;</span>
+            </div>
+            <div class="pt-2">
+                <p id="modalMessage">This is a message.</p>
+            </div>
+        </div>
+    </div>
+
+    <footer class="bg-white mt-12 py-6">
+        <div class="container mx-auto text-center">
+            <p class="text-gray-600">&copy; 2025 AI-Based Virtual Try-On System. All rights reserved.</p>
+        </div>
+    </footer>
+
+    <script>
+        document.addEventListener('DOMContentLoaded', function() {
+            // DOM Elements
+            const userImageContainer = document.getElementById('user-image-container');
+            const userImageUpload = document.getElementById('user-image-upload');
+            const userPreview = document.getElementById('user-preview');
+            const userPlaceholder = document.getElementById('user-placeholder');
+            const uploadUserBtn = document.getElementById('upload-user-btn');
+
+            const garmentSelection = document.getElementById('garment-selection');
+            const tryOnBtn = document.getElementById('try-on-btn');
+            const geminiTryOnBtn = document.getElementById('gemini-try-on-btn');
+
+            const resultContainer = document.getElementById('result-container');
+            const resultCanvas = document.getElementById('result-canvas');
+            const resultPlaceholder = document.getElementById('result-placeholder');
+            const loadingSpinner = document.getElementById('loading-spinner');
+            const downloadBtn = document.getElementById('download-btn');
+
+            // Modal Elements
+            const modal = document.getElementById('messageModal');
+            const modalTitle = document.getElementById('modalTitle');
+            const modalMessage = document.getElementById('modalMessage');
+            const closeButton = document.querySelector('.close-button');
+
+            // API Configuration
+            const apiKey = "AIzaSyDWRqsfmE9Afg2sJ29uQ8w3Gkn_4PqaBkE"; //AIzaSyCaMhxT4whX5q4Il-XoORhzJm-v8USWJgQ"; // Leave this as an empty string.
+            const apiUrl = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-image-preview:generateContent?key=${apiKey}`;
+
+            let userImageFile = null;
+            let selectedGarment = null;
+
+            // --- Mock Garment Data ---
+            const garments = [
+                { id: 1, name: 'Your Red T-Shirt', category: 'T-Shirt', image: 'https://orangeidea.in/cdn/shop/files/HS07_Red.jpg?v=1726132378' },
+                { id: 5, name: 'Your White T-Shirt', category: 'T-Shirt', image: 'https://orangeidea.in/cdn/shop/files/HS02_White.jpg?v=1726130844&width=150'},
+                { id: 2, name: 'Denim Jacket', category: 'Jacket', image: 'https://assets.digitalcontent.marksandspencer.app/image/upload/w_1008,h_1319,q_auto,f_auto,e_sharpen/SD_03_T16_6466M_E2_X_EC_94' },
+                { id: 6, name: 'Leather Jacket', category: 'Jacket', image: 'https://i.imgur.com/pl349pM.png'},
+                { id: 10, name: 'Beige Trench Coat', category: 'Jacket', image: 'https://encrypted-tbn0.gstatic.com/images?q=tbn:ANd9GcR6C0xOtO13DFeJvTMQ8FPkx1mArE43bTJYs4v2RSeHoAOPaSfSK9ANxtXPbxAlsyZEuKw&usqp=CAU' },
+                { id: 3, name: 'Summer Dress', category: 'Dress', image: 'https://i.imgur.com/5d2S6zC.png' },
+                { id: 7, name: 'Floral Sundress', category: 'Dress', image: 'https://encrypted-tbn1.gstatic.com/images?q=tbn:ANd9GcQSToyOZL0lm55_HOX8bfD4GDP2lTOtPuCkgic0mfR6ow3sihcR' },
+                { id: 8, name: 'Blue Evening Gown', category: 'Dress', image: 'https://encrypted-tbn0.gstatic.com/images?q=tbn:ANd9GcTr-HKxMh2HpLrWDEBjCzhYaWwHndCKDeXeH3Oct1MRJ5SjuztR' },
+                { id: 4, name: 'Formal Shirt', category: 'Shirt', image: 'https://i.imgur.com/KOABTTx.png' },
+                { id: 12, name: 'Plaid Flannel Shirt', category: 'Shirt', image: 'https://encrypted-tbn1.gstatic.com/images?q=tbn:ANd9GcTNwa1VYTRdCQj8yU_BUUEp53aGpkj4Pe7f9E0RmyB4K0WLsr0x' },
+                { id: 9, name: 'Navy Business Suit', category: 'Suit', image: 'https://encrypted-tbn2.gstatic.com/images?q=tbn:ANd9GcTCTVhGtN1IBcBw-5rZQsUp_5xVTG2mMj_0wF4vHe-lN55FXk4M' },
+                { id: 11, name: 'Blue Jeans', category: 'Pants', image: 'https://i.ebayimg.com/images/g/sE8AAOSwK5tjxU~T/s-l1200.jpg' }
+            ];
+            // --- Functions ---
+            function loadGarments() {
+                const garmentCategoriesContainer = document.getElementById('garment-categories');
+                const categories = {};
+
+                // Group garments by category
+                garments.forEach(garment => {
+                    if (!categories[garment.category]) {
+                        categories[garment.category] = [];
+                    }
+                    categories[garment.category].push(garment);
+                });
+
+                // Create HTML for each category
+                for (const categoryName in categories) {
+                    const categorySection = document.createElement('div');
+
+                    const categoryTitle = document.createElement('h3');
+                    categoryTitle.className = 'text-lg font-medium text-gray-700 border-b pb-2 mb-3';
+                    categoryTitle.textContent = categoryName + 's'; // e.g., "T-Shirts"
+
+                    const itemsGrid = document.createElement('div');
+                    itemsGrid.className = 'grid grid-cols-2 gap-4';
+
+                    categories[categoryName].forEach(garment => {
+                        const item = document.createElement('div');
+                        item.className = 'garment-item cursor-pointer p-2 rounded-lg transition duration-200 hover:bg-gray-100';
+                        item.dataset.garmentId = garment.id;
+                        item.innerHTML = `
+                            <img src="${garment.image}" alt="${garment.name}" class="w-full h-auto object-cover rounded-md">
+                            <p class="text-center text-sm mt-2">${garment.name}</p>
+                        `;
+                        itemsGrid.appendChild(item);
+                    });
+
+                    categorySection.appendChild(categoryTitle);
+                    categorySection.appendChild(itemsGrid);
+                    garmentCategoriesContainer.appendChild(categorySection);
+                }
+            }
+
+            function updateTryOnButtonState() {
+                const enabled = userImageFile && selectedGarment;
+                tryOnBtn.disabled = !enabled;
+                geminiTryOnBtn.disabled = !enabled;
+            }
+
+            function showModal(title, message) {
+                modalTitle.textContent = title;
+                modalMessage.textContent = message;
+                modal.style.display = 'block';
+            }
+
+            function hideModal() {
+                 modal.style.display = 'none';
+            }
+
+            function fileToGenerativePart(file) {
+                return new Promise((resolve, reject) => {
+                    const reader = new FileReader();
+                    reader.onload = () => {
+                        const base64Data = reader.result.split(',')[1];
+                        resolve({
+                            inlineData: {
+                                data: base64Data,
+                                mimeType: file.type
+                            }
+                        });
+                    };
+                    reader.onerror = (err) => reject(err);
+                    reader.readAsDataURL(file);
+                });
+            }
+
+            // --- Event Listeners ---
+            userImageContainer.addEventListener('click', () => userImageUpload.click());
+            uploadUserBtn.addEventListener('click', () => userImageUpload.click());
+
+            userImageUpload.addEventListener('change', (event) => {
+                const file = event.target.files[0];
+                if (file) {
+                    userImageFile = file;
+                    const reader = new FileReader();
+                    reader.onload = (e) => {
+                        userPreview.src = e.target.result;
+                        userPreview.classList.remove('hidden');
+                        userPlaceholder.classList.add('hidden');
+                    };
+                    reader.readAsDataURL(file);
+                    updateTryOnButtonState();
+                }
+            });
+
+            document.getElementById('garment-categories').addEventListener('click', (event) => {
+                const target = event.target.closest('.garment-item');
+                if (target) {
+                    document.querySelectorAll('.garment-item img').forEach(img => img.classList.remove('selected'));
+                    const img = target.querySelector('img');
+                    img.classList.add('selected');
+                    selectedGarment = garments.find(g => g.id == target.dataset.garmentId);
+                    updateTryOnButtonState();
+                }
+            });
+
+             tryOnBtn.addEventListener('click', async () => {
+                if (!userImageFile || !selectedGarment) {
+                    showModal('Error', 'Please upload your image and select a garment first.');
+                    return;
+                }
+                resultPlaceholder.classList.add('hidden');
+                resultCanvas.classList.add('hidden');
+                loadingSpinner.classList.remove('hidden');
+                downloadBtn.classList.add('hidden');
+                tryOnBtn.disabled = true;
+                geminiTryOnBtn.disabled = true;
+                tryOnBtn.textContent = 'Generating...';
+
+                await setupCanvas();
+
+                loadingSpinner.classList.add('hidden');
+                resultCanvas.classList.remove('hidden');
+                downloadBtn.classList.remove('hidden');
+                tryOnBtn.disabled = false;
+                geminiTryOnBtn.disabled = false;
+                tryOnBtn.textContent = 'Generate Try-On (Canvas)';
+            });
+
+            geminiTryOnBtn.addEventListener('click', async () => {
+                if (!userImageFile || !selectedGarment) {
+                    showModal('Error', 'Please upload your image and select a garment first.');
+                    return;
+                }
+                resultPlaceholder.classList.add('hidden');
+                resultCanvas.classList.add('hidden');
+                loadingSpinner.classList.remove('hidden');
+                tryOnBtn.disabled = true;
+                geminiTryOnBtn.disabled = true;
+                geminiTryOnBtn.textContent = `Generating ${selectedGarment.name}...`;
+                downloadBtn.classList.add('hidden');
+
+                try {
+                    const userImagePart = await fileToGenerativePart(userImageFile);
+
+                    const garmentImageResponse = await fetch(selectedGarment.image);
+                    const garmentImageBlob = await garmentImageResponse.blob();
+                    const garmentImageFile = new File([garmentImageBlob], "garment.png", { type: garmentImageBlob.type });
+                    const garmentImagePart = await fileToGenerativePart(garmentImageFile);
+
+                    const promptText = `You are an expert at photo editing. Your task is to perform a virtual try-on. Take the person from the first image and realistically place the garment, which is a '${selectedGarment.name}', from the second image onto their torso. The garment should fit their body shape and pose naturally. Preserve the original background, the person's head, arms, and legs. Output only the final, edited image.`;
+
+                    const payload = {
+                        contents: [{
+                            parts: [
+                                { text: promptText },
+                                userImagePart,
+                                garmentImagePart
+                            ]
+                        }],
+                         generationConfig: {
+                            responseModalities: ['IMAGE']
+                        }
+                    };
+
+                    const response = await fetch(apiUrl, {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify(payload)
+                    });
+
+                    if (!response.ok) {
+                        const errorData = await response.json();
+                        throw new Error(`API Error: ${errorData.error.message}`);
+                    }
+
+                    const result = await response.json();
+
+                    const part = result?.candidates?.[0]?.content?.parts?.find(p => p.inlineData);
+                    const base64Data = part?.inlineData?.data;
+
+                    if (base64Data) {
+                        const generatedImage = new Image();
+                        generatedImage.onload = () => {
+                            resultCanvas.width = generatedImage.width;
+                            resultCanvas.height = generatedImage.height;
+                            const ctx = resultCanvas.getContext('2d');
+                            ctx.drawImage(generatedImage, 0, 0);
+
+                            loadingSpinner.classList.add('hidden');
+                            resultCanvas.classList.remove('hidden');
+                            downloadBtn.classList.remove('hidden');
+                        };
+                        generatedImage.src = `data:image/png;base64,${base64Data}`;
+                    } else {
+                        throw new Error("No image data received from the API. The response may not contain an image.");
+                    }
+
+                } catch (error) {
+                    console.error("Gemini API Error:", error);
+                    showModal('Generation Failed', `An error occurred while using the Gemini API: ${error.message}`);
+                    resultPlaceholder.classList.remove('hidden');
+                } finally {
+                    tryOnBtn.disabled = false;
+                    geminiTryOnBtn.disabled = false;
+                    geminiTryOnBtn.textContent = 'Generate with Plus+';
+                    loadingSpinner.classList.add('hidden');
+                }
+            });
+
+            downloadBtn.addEventListener('click', () => {
+                const link = document.createElement('a');
+                link.href = resultCanvas.toDataURL('image/png');
+                link.download = 'virtual-try-on-result.png';
+                document.body.appendChild(link);
+                link.click();
+                document.body.removeChild(link);
+            });
+
+            // --- Canvas Interaction Logic ---
+            const ctx = resultCanvas.getContext('2d');
+            let loadedUserImg = null;
+            let loadedGarmentImg = null;
+
+            let garment = {
+                x: 50,
+                y: 50,
+                width: 100,
+                height: 120
+            };
+
+            let isDragging = false;
+            let startX, startY;
+
+            function loadImage(src) {
+                return new Promise((resolve, reject) => {
+                    const img = new Image();
+                    img.crossOrigin = "Anonymous";
+                    img.onload = () => resolve(img);
+                    img.onerror = (err) => {
+                        console.error("Failed to load image:", src, err);
+                        reject(new Error(`Failed to load image: ${src}`));
+                    };
+                    img.src = src;
+                });
+            }
+
+            async function setupCanvas() {
+                try {
+                    // Reset image load state
+                    loadedUserImg = null;
+                    loadedGarmentImg = null;
+
+                    [loadedUserImg, loadedGarmentImg] = await Promise.all([
+                        loadImage(userPreview.src),
+                        loadImage(selectedGarment.image)
+                    ]);
+                    const aspectRatio = loadedUserImg.width / loadedUserImg.height;
+                    const canvasWidth = resultContainer.clientWidth > 0 ? resultContainer.clientWidth : 400; // Fallback width
+                    const canvasHeight = canvasWidth / aspectRatio;
+                    resultCanvas.width = canvasWidth;
+                    resultCanvas.height = canvasHeight;
+                    const garmentAspectRatio = loadedGarmentImg.width / loadedGarmentImg.height;
+                    garment.width = canvasWidth * 0.4;
+                    garment.height = garment.width / garmentAspectRatio;
+                    garment.x = (canvasWidth - garment.width) / 2;
+                    garment.y = (canvasHeight - garment.height) / 2;
+                    drawCanvas();
+                } catch (error) {
+                    console.error("Error setting up canvas:", error);
+                    showModal('Error', 'Could not load images for the try-on. Please check the console for details and try again.');
+                    loadingSpinner.classList.add('hidden');
+                    resultPlaceholder.classList.remove('hidden');
+                    tryOnBtn.disabled = false;
+                    geminiTryOnBtn.disabled = false;
+                    tryOnBtn.textContent = 'Generate Try-On (Canvas)';
+                }
+            }
+
+            function drawCanvas() {
+                if (!loadedUserImg || !loadedGarmentImg) {
+                    // This console.error is the source of the logs, but we keep it for debugging.
+                    // The new guards in the event listeners will prevent this from being spammed.
+                    console.error("Attempted to draw canvas before images were loaded.");
+                    return;
+                }
+                ctx.clearRect(0, 0, resultCanvas.width, resultCanvas.height);
+                ctx.drawImage(loadedUserImg, 0, 0, resultCanvas.width, resultCanvas.height);
+                ctx.drawImage(loadedGarmentImg, garment.x, garment.y, garment.width, garment.height);
+            }
+
+            resultCanvas.addEventListener('mousedown', (e) => {
+                if (!loadedUserImg || !loadedGarmentImg) return; // Guard clause
+                const mouseX = e.offsetX;
+                const mouseY = e.offsetY;
+                if (mouseX >= garment.x && mouseX <= garment.x + garment.width &&
+                    mouseY >= garment.y && mouseY <= garment.y + garment.height) {
+                    isDragging = true;
+                    startX = mouseX - garment.x;
+                    startY = mouseY - garment.y;
+                }
+            });
+
+            resultCanvas.addEventListener('mousemove', (e) => {
+                if (isDragging) { // This is implicitly guarded by mousedown
+                    garment.x = e.offsetX - startX;
+                    garment.y = e.offsetY - startY;
+                    drawCanvas();
+                }
+            });
+
+            resultCanvas.addEventListener('mouseup', () => isDragging = false);
+            resultCanvas.addEventListener('mouseleave', () => isDragging = false);
+
+            resultCanvas.addEventListener('wheel', (e) => {
+                if (!loadedUserImg || !loadedGarmentImg) return; // Guard clause
+                e.preventDefault();
+                const scaleAmount = 0.05;
+                const oldWidth = garment.width;
+                const oldHeight = garment.height;
+
+                if (e.deltaY < 0) {
+                    garment.width *= (1 + scaleAmount);
+                    garment.height *= (1 + scaleAmount);
+                } else {
+                    garment.width *= (1 - scaleAmount);
+                    garment.height *= (1 - scaleAmount);
+                }
+
+                garment.x += (oldWidth - garment.width) / 2;
+                garment.y += (oldHeight - garment.height) / 2;
+
+                drawCanvas();
+            });
+
+
+            // Modal close events
+            closeButton.addEventListener('click', hideModal);
+            window.addEventListener('click', (event) => {
+                if (event.target == modal) {
+                    hideModal();
+                }
+            });
+
+            // --- Initial Load ---
+            loadGarments();
+            updateTryOnButtonState();
+        });
+    </script>
+
+</body>
+</html>
+
